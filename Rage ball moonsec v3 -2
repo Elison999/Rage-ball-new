@@ -149,7 +149,7 @@ local camera = workspace.CurrentCamera
 local ballPath = nil
 local esp = nil
 
-local defaultBallDistance = 35
+local defaultBallDistance = 40
 local ballDistance = defaultBallDistance
 
 local defaultPlayerDistance = 12.5
