@@ -1,0 +1,266 @@
+-- 🌌 Orion Library Setup
+local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')))()
+local Window = OrionLib:MakeWindow({
+	Name = "Rage ball script by darker [free]",
+	HidePremium = false,
+	SaveConfig = true,
+	ConfigFolder = "OrionTest"
+})
+
+local Tab = Window:MakeTab({
+	Name = "Combat",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+-- 📦 Serviços e variáveis globais
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
+local localPlayer = Players.LocalPlayer
+
+-- 🔘 Toggle Auto Parry
+local isEnabled = false
+Tab:AddToggle({
+	Name = "Auto parry",
+	Default = false,
+	Callback = function(Value)
+		isEnabled = Value
+	end
+})
+
+-- 🖱️ Spam Click com delay manual
+local isSpamming = false
+local spamConnection
+local lastManualClick = 0
+local manualClickDelay = 0.000000000000000000000000000000000000000000000000000000000000000001 -- Delay entre cliques manuais (em segundos)
+
+local function startClickSpam()
+	if isSpamming then return end
+	isSpamming = true
+	spamConnection = RunService.RenderStepped:Connect(function()
+		local now = tick()
+		if now - lastManualClick >= manualClickDelay then
+			VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+			VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+			lastManualClick = now
+		end
+	end)
+end
+
+local function stopClickSpam()
+	if not isSpamming then return end
+	isSpamming = false
+	if spamConnection then spamConnection:Disconnect() end
+end
+
+-- 🧲 Toggle Orion UI
+Tab:AddToggle({
+	Name = "Spam Click",
+	Default = false,
+	Callback = function(Value)
+		if Value then
+			startClickSpam()
+			if button then
+				button.Text = "Spam On"
+				button.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+			end
+		else
+			stopClickSpam()
+			if button then
+				button.Text = "Spam Off"
+				button.BackgroundColor3 = Color3.fromRGB(50, 50, 255)
+			end
+		end
+	end
+})
+
+-- 🧱 Botão manual (arrastável)
+local screenGui = Instance.new("ScreenGui", localPlayer:WaitForChild("PlayerGui"))
+screenGui.Name = "SpamClickUI"
+screenGui.ResetOnSpawn = false
+
+button = Instance.new("TextButton")
+button.Name = "SpamButton"
+button.Text = "Spam Off"
+button.Size = UDim2.new(0, 120, 0, 50)
+button.Position = UDim2.new(0.5, -60, 0.6, 0)
+button.BackgroundColor3 = Color3.fromRGB(50, 50, 255)
+button.TextColor3 = Color3.new(1, 1, 1)
+button.BackgroundTransparency = 0.1
+button.Font = Enum.Font.GothamBold
+button.TextSize = 22
+button.AnchorPoint = Vector2.new(0.5, 0.5)
+button.BorderSizePixel = 0
+button.AutoButtonColor = true
+button.Parent = screenGui
+
+-- 🎮 Drag móvel
+local dragging = false
+local dragInput, mousePos, framePos
+
+button.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		mousePos = input.Position
+		framePos = button.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+button.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+		dragInput = input
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if input == dragInput and dragging then
+		local delta = input.Position - mousePos
+		button.Position = UDim2.new(
+			framePos.X.Scale,
+			framePos.X.Offset + delta.X,
+			framePos.Y.Scale,
+			framePos.Y.Offset + delta.Y
+		)
+	end
+end)
+
+-- 🖱️ Clique no botão ativa/desativa spam manual
+button.MouseButton1Click:Connect(function()
+	if isSpamming then
+		stopClickSpam()
+		button.Text = "Spam Off"
+		button.BackgroundColor3 = Color3.fromRGB(50, 50, 255)
+	else
+		startClickSpam()
+		button.Text = "Spam On"
+		button.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+	end
+end)
+
+-- ✅ Auto Parry Core (mantido)
+local camera = workspace.CurrentCamera
+local ballPath = nil
+local esp = nil
+
+local defaultBallDistance = 35
+local ballDistance = defaultBallDistance
+
+local defaultPlayerDistance = 12.5
+local playerDetectDistance = defaultPlayerDistance
+
+local lastBallIncrease = 0
+local lastPlayerIncrease = 0
+local lastClickTime = 0
+
+local clickSpamMultiplier = 3
+
+local function createESP()
+	if not ballPath then return end
+	if esp then esp:Destroy() end
+
+	esp = Instance.new("BoxHandleAdornment")
+	esp.Size = Vector3.new(2, 2, 2)
+	esp.Color3 = Color3.new(1, 1, 1)
+	esp.Adornee = ballPath
+	esp.AlwaysOnTop = true
+	esp.ZIndex = 10
+	esp.Transparency = 0
+	esp.Name = "BallESP"
+	esp.Parent = ballPath
+end
+
+local function isBallRed()
+	if not ballPath then return false end
+	local color = ballPath.BrickColor or ballPath.Color
+	return color.r > 0.8 and color.g < 0.2 and color.b < 0.2
+end
+
+local function clickMiddle()
+	for i = 1, clickSpamMultiplier do
+		VirtualInputManager:SendMouseButtonEvent(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2, 0, true, game, 0)
+		VirtualInputManager:SendMouseButtonEvent(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2, 0, false, game, 0)
+	end
+end
+
+local function resetDistances()
+	ballDistance = defaultBallDistance
+	playerDetectDistance = defaultPlayerDistance
+end
+
+local function getNearbyPlayers()
+	local nearby = {}
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+			local dist = (player.Character.HumanoidRootPart.Position - ballPath.Position).Magnitude
+			if dist <= playerDetectDistance then
+				table.insert(nearby, {player = player, distance = dist})
+			end
+		end
+	end
+	table.sort(nearby, function(a, b) return a.distance < b.distance end)
+	return nearby
+end
+
+Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(function(char)
+		char:WaitForChild("Humanoid").Died:Connect(function()
+			resetDistances()
+		end)
+	end)
+end)
+
+RunService.RenderStepped:Connect(function()
+	if not isEnabled then return end
+
+	if not ballPath or not ballPath:IsDescendantOf(workspace) then
+		local success = pcall(function()
+			ballPath = workspace:WaitForChild("GameObjects"):WaitForChild("Balls"):WaitForChild("Ball", 5)
+		end)
+		if success and ballPath then
+			createESP()
+			resetDistances()
+		end
+		return
+	end
+
+	if esp then
+		esp.Color3 = isBallRed() and Color3.new(1, 0, 0) or Color3.new(1, 1, 1)
+	end
+
+	local char = localPlayer.Character
+	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
+	local now = tick()
+	local distanceToBall = (char.HumanoidRootPart.Position - ballPath.Position).Magnitude
+	local ballRed = isBallRed()
+
+	if ballRed and now - lastBallIncrease >= 1 then
+		ballDistance += 1
+		lastBallIncrease = now
+	end
+
+	if now - lastPlayerIncrease >= 1 then
+		playerDetectDistance += 0.5
+		lastPlayerIncrease = now
+	end
+
+	local nearbyPlayers = getNearbyPlayers()
+	local playerNear = #nearbyPlayers > 0
+
+	if distanceToBall <= ballDistance and ballRed then
+		local interval = playerNear and 0.0000000000000000000000000000000000000000000000000000001 or 0.65
+		if now - lastClickTime >= interval then
+			clickMiddle()
+			lastClickTime = now
+		end
+	end
+end)
+
+Tab:AddParagraph("alre")
